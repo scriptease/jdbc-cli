@@ -48,7 +48,13 @@ object DaemonMain {
 }
 
 @Serializable
-private data class OpenReq(val alias: String, val jdbcUrl: String, val user: String = "", val password: String = "")
+private data class OpenReq(
+    val alias: String,
+    val jdbcUrl: String,
+    val user: String = "",
+    val password: String = "",
+    val passwordKeychain: String = ""
+)
 
 @Serializable
 private data class CloseReq(val alias: String)
@@ -95,7 +101,11 @@ object Router : Handler.Abstract() {
                 val body = Content.Source.asString(request, Charsets.UTF_8)
                 val req = json.decodeFromString<OpenReq>(body)
                 try {
-                    Pools.open(req.alias, req.jdbcUrl, req.user, req.password)
+                    val password = when {
+                        req.passwordKeychain.isNotEmpty() -> Keychain.lookup(req.passwordKeychain)
+                        else -> req.password
+                    }
+                    Pools.open(req.alias, req.jdbcUrl, req.user, password)
                     sendJson(response, callback, """{"ok":true}""")
                 } catch (e: Exception) {
                     sendError(response, callback, 400, e.message ?: "open failed")

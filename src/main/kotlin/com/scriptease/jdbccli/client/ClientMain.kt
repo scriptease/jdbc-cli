@@ -14,8 +14,13 @@ object ClientMain {
                 val alias = p["alias"] ?: die("--alias required")
                 val jdbcUrl = p["jdbc-url"] ?: die("--jdbc-url required")
                 val user = p["user"] ?: ""
-                val password = if (p.containsKey("password-stdin")) readLine() ?: "" else ""
-                val body = buildJsonOpen(alias, jdbcUrl, user, password)
+                val keychainRef = p["password-keychain"]
+                val password = when {
+                    keychainRef != null -> ""  // daemon will resolve from keychain
+                    p.containsKey("password-stdin") -> readLine() ?: ""
+                    else -> ""
+                }
+                val body = buildJsonOpen(alias, jdbcUrl, user, password, keychainRef)
                 println(HttpClient.post("/open", body))
             }
             "close" -> {
@@ -107,9 +112,10 @@ object ClientMain {
     private fun parseFlags(args: Array<String>, start: Int) = parse(args, start).flags
     private fun parsePositional(args: Array<String>, start: Int) = parse(args, start).positionals.firstOrNull()
 
-    private fun buildJsonOpen(alias: String, jdbcUrl: String, user: String, password: String): String {
+    private fun buildJsonOpen(alias: String, jdbcUrl: String, user: String, password: String, keychainRef: String? = null): String {
         fun esc(s: String) = s.replace("\\", "\\\\").replace("\"", "\\\"")
-        return """{"alias":"${esc(alias)}","jdbcUrl":"${esc(jdbcUrl)}","user":"${esc(user)}","password":"${esc(password)}"}"""
+        val kc = if (keychainRef != null) ""","passwordKeychain":"${esc(keychainRef)}"""" else ""
+        return """{"alias":"${esc(alias)}","jdbcUrl":"${esc(jdbcUrl)}","user":"${esc(user)}","password":"${esc(password)}"$kc}"""
     }
 
     private fun die(msg: String): Nothing {
