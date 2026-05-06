@@ -53,6 +53,24 @@ object ClientMain {
                 fun esc(s: String) = s.replace("\\", "\\\\").replace("\"", "\\\"")
                 println(HttpClient.post("/describe", """{"alias":"${esc(alias)}","table":"${esc(table)}"}"""))
             }
+            "begin" -> {
+                val p = parseFlags(args, 1)
+                val alias = p["alias"] ?: die("--alias required")
+                fun esc(s: String) = s.replace("\\", "\\\\").replace("\"", "\\\"")
+                println(HttpClient.post("/begin", """{"alias":"${esc(alias)}"}"""))
+            }
+            "commit" -> {
+                val p = parseFlags(args, 1)
+                val alias = p["alias"] ?: die("--alias required")
+                fun esc(s: String) = s.replace("\\", "\\\\").replace("\"", "\\\"")
+                println(HttpClient.post("/commit", """{"alias":"${esc(alias)}"}"""))
+            }
+            "rollback" -> {
+                val p = parseFlags(args, 1)
+                val alias = p["alias"] ?: die("--alias required")
+                fun esc(s: String) = s.replace("\\", "\\\\").replace("\"", "\\\"")
+                println(HttpClient.post("/rollback", """{"alias":"${esc(alias)}"}"""))
+            }
             else -> {
                 System.err.println("""{"error":"unknown subcommand: ${args[0]}"}""")
                 System.exit(1)

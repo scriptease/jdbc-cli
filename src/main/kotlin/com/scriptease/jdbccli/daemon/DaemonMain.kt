@@ -65,6 +65,15 @@ private data class SchemaReq(val alias: String)
 @Serializable
 private data class DescribeReq(val alias: String, val table: String)
 
+@Serializable
+private data class BeginReq(val alias: String)
+
+@Serializable
+private data class CommitReq(val alias: String)
+
+@Serializable
+private data class RollbackReq(val alias: String)
+
 object Router : Handler.Abstract() {
     private val json = Json { ignoreUnknownKeys = true }
 
@@ -172,6 +181,39 @@ object Router : Handler.Abstract() {
                     sendJson(response, callback, "[${cols.joinToString(",")}]")
                 } catch (e: Exception) {
                     sendError(response, callback, 400, e.message ?: "describe failed")
+                }
+                true
+            }
+            method == "POST" && path == "/begin" -> {
+                val body = Content.Source.asString(request, Charsets.UTF_8)
+                val req = json.decodeFromString<BeginReq>(body)
+                try {
+                    Pools.begin(req.alias)
+                    sendJson(response, callback, """{"ok":true}""")
+                } catch (e: Exception) {
+                    sendError(response, callback, 400, e.message ?: "begin failed")
+                }
+                true
+            }
+            method == "POST" && path == "/commit" -> {
+                val body = Content.Source.asString(request, Charsets.UTF_8)
+                val req = json.decodeFromString<CommitReq>(body)
+                try {
+                    Pools.commit(req.alias)
+                    sendJson(response, callback, """{"ok":true}""")
+                } catch (e: Exception) {
+                    sendError(response, callback, 400, e.message ?: "commit failed")
+                }
+                true
+            }
+            method == "POST" && path == "/rollback" -> {
+                val body = Content.Source.asString(request, Charsets.UTF_8)
+                val req = json.decodeFromString<RollbackReq>(body)
+                try {
+                    Pools.rollback(req.alias)
+                    sendJson(response, callback, """{"ok":true}""")
+                } catch (e: Exception) {
+                    sendError(response, callback, 400, e.message ?: "rollback failed")
                 }
                 true
             }
