@@ -76,6 +76,23 @@ object ClientMain {
                 fun esc(s: String) = s.replace("\\", "\\\\").replace("\"", "\\\"")
                 println(HttpClient.post("/rollback", """{"alias":"${esc(alias)}"}"""))
             }
+            "batch" -> {
+                val p = parseFlags(args, 1)
+                val defaultAlias = p["alias"]
+                val lines = generateSequence(::readLine).toList()
+                val body = if (defaultAlias == null) {
+                    lines.joinToString("\n")
+                } else {
+                    fun esc(s: String) = s.replace("\\", "\\\\").replace("\"", "\\\"")
+                    lines.joinToString("\n") { line ->
+                        val trimmed = line.trim()
+                        if (trimmed.startsWith("{") && !trimmed.contains(""""alias"""")) {
+                            """{"alias":"${esc(defaultAlias)}",${ trimmed.removePrefix("{") }"""
+                        } else trimmed
+                    }
+                }
+                println(HttpClient.post("/batch", body))
+            }
             else -> {
                 System.err.println("""{"error":"unknown subcommand: ${args[0]}"}""")
                 System.exit(1)

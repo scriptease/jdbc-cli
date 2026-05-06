@@ -14,6 +14,7 @@ import java.nio.ByteBuffer
 import java.nio.file.Files
 import java.nio.file.Path
 import java.nio.file.attribute.PosixFilePermission
+import java.util.concurrent.Executors
 
 object DaemonMain {
     private val sockPath: Path = Path.of(System.getProperty("user.home"), ".jdbc-cli", "sock")
@@ -23,6 +24,7 @@ object DaemonMain {
         Files.deleteIfExists(sockPath)
 
         val threadPool = QueuedThreadPool()
+        threadPool.virtualThreadsExecutor = Executors.newVirtualThreadPerTaskExecutor()
         val server = Server(threadPool)
 
         val connector = UnixDomainServerConnector(server)
@@ -70,6 +72,15 @@ private data class SchemaReq(val alias: String)
 
 @Serializable
 private data class DescribeReq(val alias: String, val table: String)
+
+@Serializable
+private data class BatchOp(
+    val op: String,
+    val alias: String,
+    val sql: String = "",
+    val json: Boolean = false,
+    val table: String = ""
+)
 
 @Serializable
 private data class BeginReq(val alias: String)
@@ -225,6 +236,44 @@ object Router : Handler.Abstract() {
                 } catch (e: Exception) {
                     sendError(response, callback, 400, e.message ?: "rollback failed")
                 }
+                true
+            }
+            method == "POST" && path == "/batch" -> {
+                val body = Content.Source.asString(request, Charsets.UTF_8)
+                val lines = body.trimEnd().split("\n").filter { it.isNotBlank() }
+                val results = lines.map { line ->
+                    try {
+                        val op = json.decodeFromString<BatchOp>(line)
+                        when (op.op) {
+                            "query" -> Pools.withConn(op.alias) { conn ->
+                                conn.createStatement().use { stmt ->
+                                    stmt.executeQuery(op.sql).use { rs ->
+                                        if (op.json) ResultSets.toJson(rs) else ResultSets.toTsv(rs)
+                                    }
+                                }
+                            }
+                            "exec" -> {
+                                val rows = Pools.withConn(op.alias) { conn ->
+                                    conn.createStatement().use { stmt -> stmt.executeUpdate(op.sql) }
+                                }
+                                """{"rowsAffected":$rows}"""
+                            }
+                            "begin" -> { Pools.begin(op.alias); """{"ok":true}""" }
+                            "commit" -> { Pools.commit(op.alias); """{"ok":true}""" }
+                            "rollback" -> { Pools.rollback(op.alias); """{"ok":true}""" }
+                            else -> """{"error":"unknown op: ${op.op.replace("\"","\\\"")}}"""
+                        }
+                    } catch (e: Exception) {
+                        val escaped = (e.message ?: "error").replace("\\", "\\\\").replace("\"", "\\\"")
+                        """{"error":"$escaped"}"""
+                    }
+                }
+                val ndjson = results.joinToString("\n")
+                val bytes = ndjson.toByteArray(Charsets.UTF_8)
+                response.status = 200
+                response.headers.put("Content-Type", "application/x-ndjson; charset=utf-8")
+                response.headers.put("Content-Length", bytes.size.toString())
+                response.write(true, ByteBuffer.wrap(bytes), callback)
                 true
             }
             else -> {
