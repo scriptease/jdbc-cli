@@ -39,10 +39,10 @@ sleep 1
 jdbc-cli ping
 ```
 
-If the wrapper itself is missing, re-run the installer:
+If the wrapper itself is missing, re-run the installer from the repo root:
 
 ```bash
-bash ~/github/jdbc-cli/scripts/install.sh
+bash scripts/install.sh
 ```
 
 ## Lifecycle
@@ -136,13 +136,21 @@ call after a reboot may show a Keychain GUI prompt; allow once.
 
 ```bash
 cat <<'EOF' | jdbc-cli batch --alias prod-shop
-{"cmd":"query","sql":"SELECT count(*) FROM users"}
-{"cmd":"query","sql":"SELECT count(*) FROM orders"}
-{"cmd":"exec","sql":"UPDATE … WHERE …"}
+{"op":"query","sql":"SELECT count(*) FROM users"}
+{"op":"query","sql":"SELECT count(*) FROM orders","json":true}
+{"op":"exec","sql":"UPDATE users SET active=1 WHERE id=42"}
 EOF
 ```
 
-Returns NDJSON — one result line per input op, in order.
+Returns NDJSON — one result line per input op, in order. A failed op emits
+`{"error":"…"}` at its position; the rest of the batch continues.
+
+Supported ops in batch: `query`, `exec`, `begin`, `commit`, `rollback`.
+(`schema` and `describe` are single-op commands only.)
+
+`--alias` on the `batch` command injects the alias into every line that lacks
+one, so per-line `"alias"` fields are optional when all ops share the same
+connection.
 
 ## Common pitfalls
 
